@@ -1,15 +1,28 @@
 # BUSCANDO, Puerto 4000, id aleatorio 0-9999 (el id mas alto es el host)
-
+import ipaddress
 import socket
 import random
 import time 
 
-puerto = 4000
+
 ID = random.randint(0, 9999)
 emparejado = False
 
+def obtener_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))
+        mi_ip = s.getsockname()[0]
+    finally:
+        s.close()
+    return mi_ip
+
+def calcular_broadcast():
+    return str(ipaddress.IPv4Network(obtener_ip() + "/24", strict=False).broadcast_address)
 
 def BuscarPartida():
+    puerto = 4000
+    dir_broadcast = calcular_broadcast()
 
     global emparejado
     # Creacion del socket y permisos para hacer broadcast
@@ -22,7 +35,7 @@ def BuscarPartida():
     mensaje = f"BUSCANDO;{ID}".encode()
 
     #Mandar broadcast
-    sock.sendto(mensaje, ("255.255.255.255", puerto))
+    sock.sendto(mensaje, (dir_broadcast, puerto))
     print("Buscando oponente")
 
     #Bucle para encontrar la otra maquina
@@ -50,7 +63,8 @@ def BuscarPartida():
         #si se acaba el tiempo de 5 segundos vuelve a buscar oponente
         except socket.timeout:
             print('No se encuentran jugadores')
-            sock.sendto(mensaje, ("255.255.255.255", puerto))
+            sock.sendto(mensaje, (dir_broadcast, puerto))
 BuscarPartida()
 
 # HACER PING AL SERVIDOR DE GOOGLE Y QUE ME DEVUELVA MI IP, CALCULAR EL BROADCAST DE LA  SUBRED CON EL /24 
+
