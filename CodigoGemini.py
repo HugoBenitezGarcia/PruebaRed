@@ -1,4 +1,3 @@
-import ipaddress
 import socket
 import random
 import time
@@ -11,17 +10,9 @@ emparejado = False
 soy_host = False
 
 
-def obtener_ip():
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        s.connect(("8.8.8.8", 80))
-        return s.getsockname()[0]
-    finally:
-        s.close()
-
-
 def calcular_broadcast():
-    return str(ipaddress.IPv4Network(obtener_ip() + "/24", strict=False).broadcast_address)
+    # Broadcast universal (usa la máscara real del sistema)
+    return "255.255.255.255"
 
 
 def BuscarPartida():
@@ -43,7 +34,7 @@ def BuscarPartida():
     ultimo_envio = 0
 
     while not emparejado:
-        # Broadcast cada 2 segundos
+        # Enviar broadcast cada 2 segundos
         if time.time() - ultimo_envio > 2:
             sock.sendto(mensaje, (dir_broadcast, PUERTO))
             ultimo_envio = time.time()
@@ -58,13 +49,15 @@ def BuscarPartida():
 
             tipo, id_oponente, nombre_oponente = partes
 
-            if tipo == "DESCUBRIR":
-                id_oponente = int(id_oponente)
+            if tipo != "DESCUBRIR":
+                continue
+
+            id_oponente = int(id_oponente)
 
             if id_oponente == ID:
                 continue
 
-    # RESPONDER siempre
+            # Responder siempre para que el otro también reciba algo
             sock.sendto(mensaje, addr)
 
             soy_host = ID > id_oponente
@@ -74,7 +67,6 @@ def BuscarPartida():
             print(f"[ROL] Soy {rol}")
 
             emparejado = True
-
 
         except socket.timeout:
             pass
