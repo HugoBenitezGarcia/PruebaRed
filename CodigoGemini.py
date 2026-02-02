@@ -58,13 +58,14 @@ def BuscarPartida():
 
             tipo, id_oponente, nombre_oponente = partes
 
-            if tipo != "DESCUBRIR":
-                continue
-
-            id_oponente = int(id_oponente)
+            if tipo == "DESCUBRIR":
+                id_oponente = int(id_oponente)
 
             if id_oponente == ID:
                 continue
+
+    # RESPONDER siempre
+            sock.sendto(mensaje, addr)
 
             soy_host = ID > id_oponente
             rol = "HOST" if soy_host else "CLIENTE"
@@ -73,6 +74,7 @@ def BuscarPartida():
             print(f"[ROL] Soy {rol}")
 
             emparejado = True
+
 
         except socket.timeout:
             pass
