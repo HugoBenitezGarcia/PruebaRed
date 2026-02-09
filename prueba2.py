@@ -1,71 +1,106 @@
-import ipaddress
 import socket
 import random
+import time
 
+PUERTO = 4000
+MULTICAST_GROUP = '224.0.0.251'  # Dirección multicast
 ID = random.randint(0, 9999)
-print(f"🎲 Mi ID: {ID}")
-emparejado = False
+NOMBRE = "Jugador_Python"
 
 def obtener_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         s.connect(("8.8.8.8", 80))
-        mi_ip = s.getsockname()[0]
+        return s.getsockname()[0]
+    except Exception:
+        return "127.0.0.1"
     finally:
         s.close()
-    return mi_ip
 
-def calcular_broadcast():
-    return str(ipaddress.IPv4Network(obtener_ip() + "/24", strict=False).broadcast_address)
-
-def BuscarPartida():
-    puerto = 4000
-    dir_broadcast = calcular_broadcast()
+def buscar_partida():
     mi_ip = obtener_ip()
-    nombre = "hola"
-    global emparejado
-    
-    print(f"📍 Mi IP: {mi_ip}")
-    print(f"📡 Broadcast: {dir_broadcast}")
-    print("-" * 50)
     
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    sock.bind(("", puerto))
-    sock.settimeout(1)
     
-    mensaje = f"DESCUBRIR;{ID};{nombre}".encode()
-    sock.sendto(mensaje, (dir_broadcast, puerto))
-    print("📤 Buscando oponente...")
+    # Configuración multicast
+    sock.bind(('', PUERTO))
     
-    while not emparejado:
-        try:
-            data, addr = sock.recvfrom(1024)
-            print(f"📨 ¡RECIBIDO de {addr[0]}!: {data.decode()}")
-            
-            texto = data.decode()
-            partes = texto.split(";")
-            if len(partes) != 3:
-                continue
-            
-            tipo, id_oponente, nombre_oponente = partes
-            
-            if tipo != "DESCUBRIR":
-                continue
-            
-            id_oponente = int(id_oponente)
-            
-            if ID == id_oponente:
-                print(f"🔁 Es mi propio mensaje, ignorando")
-                continue
-            
-            print(f"🎉 ¡CONECTADO con {nombre_oponente}!")
-            emparejado = True
-            sock.close()
-            
-        except socket.timeout:
-            print('⏳ No hay respuesta, reintentando...')
-            sock.sendto(mensaje, (dir_broadcast, puerto))
+    # Unirse al grupo multicast
+    import struct
+    mreq = struct.pack('4sL', socket.inet_aton(MULTICAST_GROUP), socket.INADDR_ANY)
+    sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+    
+    # TTL para multicast (1 = misma red local)
+    sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
+    
+    sock.settimeout(0.5)
 
-BuscarPartida()
+    print(f"[INFO] Mi IP: {mi_ip} | ID: {ID} | Multicast: {MULTICAST_GROUP}")
+    print("[INFO] Buscando oponente...")
+
+    ultimo_envio = 0
+    oponente_encontrado = None
+    confirmacion_enviada = False
+
+    try:
+        while True:
+            ahora = time.time()
+            
+            if ahora - ultimo_envio > 2 and not oponente_encontrado:
+                mensaje = f"DESCUBRIR;{ID};{NOMBRE}"
+                sock.sendto(mensaje.encode(), (MULTICAST_GROUP, PUERTO))
+                ultimo_envio = ahora
+
+            try:
+                data, addr = sock.recvfrom(1024)
+                if addr[0] == mi_ip:
+                    continue
+
+                partes = data.decode().split(";")
+                
+                if len(partes) == 3 and partes[0] == "DESCUBRIR":
+                    id_oponente = int(partes[1])
+                    nombre_oponente = partes[2]
+
+                    soy_host = ID > id_oponente
+                    rol = "HOST" if soy_host else "CLIENTE"
+                    
+                    print(f"\n[MATCH] ¡Oponente encontrado!")
+                    print(f" -> Nombre: {nombre_oponente} ({addr[0]})")
+                    print(f" -> Rol: {rol}")
+                    
+                    oponente_encontrado = (addr[0], soy_host, nombre_oponente)
+                    
+                    if not confirmacion_enviada:
+                        mensaje_confirm = f"CONFIRMACION;{ID};{NOMBRE};{rol}"
+                        sock.sendto(mensaje_confirm.encode(), (addr[0], PUERTO))
+                        confirmacion_enviada = True
+                        print(f"[INFO] Confirmación enviada a {nombre_oponente}")
+                
+                elif len(partes) == 4 and partes[0] == "CONFIRMACION":
+                    nombre_confirm = partes[2]
+                    rol_confirm = partes[3]
+                    
+                    print(f"\n[CONFIRMADO] {nombre_confirm} confirmó la conexión como {rol_confirm}")
+                    
+                    if oponente_encontrado:
+                        break
+
+            except socket.timeout:
+                if oponente_encontrado and confirmacion_enviada:
+                    continue
+                    
+    finally:
+        sock.close()
+    
+    return oponente_encontrado
+
+resultado = buscar_partida()
+
+if resultado:
+    ip_rival, es_host, nombre_rival = resultado
+    if es_host:
+        print(f"\n[LISTO] Iniciando servidor TCP en {PUERTO}...")
+    else:
+        print(f"\n[LISTO] Conectando como cliente a {ip_rival}:{PUERTO}...")
