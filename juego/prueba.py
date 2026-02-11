@@ -21,7 +21,7 @@ def obtener_ip():
 
 
 def calcular_broadcast():
-    return str(ipaddress.IPv4Network(obtener_ip() + "/21", strict=False).broadcast_address)
+    return str(ipaddress.IPv4Network(obtener_ip() + "/24", strict=False).broadcast_address)
 
 
 def buscar_partida():
