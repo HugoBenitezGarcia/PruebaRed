@@ -2,6 +2,7 @@ import ipaddress
 import socket
 import time
 import uuid
+import random
 from hundirFlota import *
 
 PUERTO = 4000
@@ -19,7 +20,7 @@ def obtener_ip():
 
 
 def calcular_broadcast():
-    return str(ipaddress.IPv4Network(obtener_ip() + "/21", strict=False).broadcast_address)
+    return str(ipaddress.IPv4Network(obtener_ip() + "/24", strict=False).broadcast_address)
 
 
 def buscar_partida():
@@ -36,7 +37,7 @@ def buscar_partida():
     soy_host = False
     oponente = None
 
-    print(" Buscando partida...")
+    print("Buscando partida...")
 
     while estado == "ESPERANDO":
         mensaje = f"DESCUBRIR;{ID};{NOMBRE}"
@@ -59,8 +60,6 @@ def buscar_partida():
                     oponente = (ip_oponente, nombre_oponente)
                     soy_host = True
                     estado = "JUGANDO"
-                else:
-                    print(" Esperando respuesta...")
 
             elif modo == "ACEPTADO":
                 print(f"Partida encontrada contra: {nombre_oponente}")
@@ -83,7 +82,7 @@ def abrir_servidor():
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.bind((obtener_ip(), PUERTO))
     s.listen(1)
-    print("Abriendo servidor")
+    print("Abriendo servidor...")
     conn, addr = s.accept()
     print("Conectado con", addr)
     return conn
@@ -92,18 +91,17 @@ def abrir_servidor():
 def conectar_cliente(ip_rival):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.connect((ip_rival, PUERTO))
-    print(f"Jugador cliente {nombre_rival} Conectado al host")
+    print(f"Conectado al host {ip_rival}")
     return s
 
 
 def recibir_mensajes(sock):
-    while True:
-        try:
-            mensaje = sock.recv(1024).decode()
-            if mensaje:
-                print(f"[RIVAL]: {mensaje}")
-        except:
-            break
+    mensaje = sock.recv(1024).decode()
+
+    while mensaje:
+        print(f"[RIVAL]: {mensaje}")
+        mensaje = sock.recv(1024).decode()
+
 
 if __name__ == "__main__":
     resultado = buscar_partida()
@@ -116,18 +114,25 @@ if __name__ == "__main__":
             print("[ROL] HOST")
             conn = abrir_servidor()
 
-            tablero_jugador1 = Tablero()
-            flota1 = [Barco(5, "Portaaviones"), Barco(4, "Acorazado"), Barco(3, "Crucero"), Barco(3, "Submarino"), Barco(2, "Destructor")]
-            for barco in flota1:
-                tablero_jugador1.agregar_barco(barco)
+            tablero = Tablero()
+            flota = [
+                Barco(5, "Portaaviones"),
+                Barco(4, "Acorazado"),
+                Barco(3, "Crucero"),
+                Barco(3, "Submarino"),
+                Barco(2, "Destructor")
+            ]
+
+            for barco in flota:
+                tablero.agregar_barco(barco)
 
             casillas_pendientes = [(f, c) for f in range(8) for c in range(8)]
             random.shuffle(casillas_pendientes)
 
             turno = "MI_TURNO"
-            jugando = True
 
-            while jugando:
+            while turno in ("MI_TURNO", "TURNO_RIVAL"):
+
                 if turno == "MI_TURNO":
                     fila, columna = casillas_pendientes.pop()
                     disparo = f"{fila},{columna}"
@@ -138,22 +143,23 @@ if __name__ == "__main__":
 
                     if respuesta == "Derrota":
                         print("[FIN] ¡Has ganado!")
-                        jugando = False
+                        turno = None
                     else:
                         turno = "TURNO_RIVAL"
 
                 else:
                     disparo_recibido = conn.recv(1024).decode().strip()
                     f_r, c_r = map(int, disparo_recibido.split(","))
-                    resultado = tablero_jugador1.recibir_ataque(f_r, c_r)
+                    resultado_ataque = tablero.recibir_ataque(f_r, c_r)
 
-                    barcos_vivos = sum(1 for b in tablero_jugador1.barcos if b.vidas > 0)
+                    barcos_vivos = sum(1 for b in tablero.barcos if b.vidas > 0)
+
                     if barcos_vivos == 0:
                         conn.sendall("Derrota".encode())
                         print("[FIN] Has perdido.")
-                        jugando = False
+                        turno = None
                     else:
-                        conn.sendall(resultado.encode())
+                        conn.sendall(resultado_ataque.encode())
                         turno = "MI_TURNO"
 
         else:
@@ -161,30 +167,38 @@ if __name__ == "__main__":
             time.sleep(1)
             s = conectar_cliente(ip_rival)
 
-            tablero_jugador2 = Tablero()
-            flota2 = [Barco(5, "Portaaviones"), Barco(4, "Acorazado"), Barco(3, "Crucero"), Barco(3, "Submarino"), Barco(2, "Destructor")]
-            for barco in flota2:
-                tablero_jugador2.agregar_barco(barco)
+            tablero = Tablero()
+            flota = [
+                Barco(5, "Portaaviones"),
+                Barco(4, "Acorazado"),
+                Barco(3, "Crucero"),
+                Barco(3, "Submarino"),
+                Barco(2, "Destructor")
+            ]
+
+            for barco in flota:
+                tablero.agregar_barco(barco)
 
             casillas_pendientes = [(f, c) for f in range(8) for c in range(8)]
             random.shuffle(casillas_pendientes)
 
             turno = "TURNO_RIVAL"
-            jugando = True
 
-            while jugando:
+            while turno in ("MI_TURNO", "TURNO_RIVAL"):
+
                 if turno == "TURNO_RIVAL":
                     disparo_recibido = s.recv(1024).decode().strip()
                     f_r, c_r = map(int, disparo_recibido.split(","))
-                    resultado = tablero_jugador2.recibir_ataque(f_r, c_r)
+                    resultado_ataque = tablero.recibir_ataque(f_r, c_r)
 
-                    barcos_vivos = sum(1 for b in tablero_jugador2.barcos if b.vidas > 0)
+                    barcos_vivos = sum(1 for b in tablero.barcos if b.vidas > 0)
+
                     if barcos_vivos == 0:
                         s.sendall("Derrota".encode())
                         print("[FIN] Has perdido.")
-                        jugando = False
+                        turno = None
                     else:
-                        s.sendall(resultado.encode())
+                        s.sendall(resultado_ataque.encode())
                         turno = "MI_TURNO"
 
                 else:
@@ -197,6 +211,6 @@ if __name__ == "__main__":
 
                     if respuesta == "Derrota":
                         print("[FIN] ¡Has ganado!")
-                        jugando = False
+                        turno = None
                     else:
                         turno = "TURNO_RIVAL"

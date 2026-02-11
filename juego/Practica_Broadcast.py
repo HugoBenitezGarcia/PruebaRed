@@ -19,7 +19,8 @@ def obtener_ip():
 
 
 def calcular_broadcast():
-    return str(ipaddress.IPv4Network(obtener_ip() + "/21", strict=False).broadcast_address)
+    return str(ipaddress.IPv4Network(obtener_ip() + "/24", strict=False).broadcast_address)
+#/24 si vamos a jugar por cable, /21 si vamos a jugar por red ( creo que es imposible jugar por red)
 
 
 def buscar_partida():
