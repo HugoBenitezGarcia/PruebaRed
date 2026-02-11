@@ -1,8 +1,10 @@
 import ipaddress
+import random
 import socket
 import time
 import uuid
 from hundirFlota import *
+
 
 PUERTO = 4000
 ID = str(uuid.uuid4())
@@ -127,8 +129,8 @@ if __name__ == "__main__":
 
             while jugando:
                 if turno == "MI_TURNO":
-                    fila = int(input("Fila (0-7): "))
-                    columna = int(input("Columna (0-7): "))
+                    fila = random.choice()
+                    columna = random.choice()
                     disparo = f"{fila},{columna}"
                     conn.sendall(disparo.encode())
 
@@ -184,8 +186,8 @@ if __name__ == "__main__":
                         turno = "MI_TURNO"
 
                 else:
-                    fila = int(input("Fila (0-7): "))
-                    columna = int(input("Columna (0-7): "))
+                    fila = random.choice()
+                    columna = random.choice()
                     disparo = f"{fila},{columna}"
                     s.sendall(disparo.encode())
 
