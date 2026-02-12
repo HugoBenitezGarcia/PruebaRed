@@ -145,4 +145,96 @@ if __name__ == "__main__":
             time.sleep(1.5) 
             
             print("\n" + "="*20)
-            print("ESTADO
+            print("ESTADO DE TU FLOTA:")
+            mi_tablero.imprimir(ocultar_barcos=False)
+            print("="*20 + "\n")
+
+            if es_mi_turno:
+                print(f"\n--- TU TURNO DE ATACAR A {nombre_rival} ---")
+                
+                coord_ia = mi_tablero.atacar()
+                letra = coord_ia[0].upper()
+                fila = coord_ia[1]
+                disparo = f"{letra}{fila}"
+
+                try:
+                    canal_juego.sendall(disparo.encode())
+                    print(f"[RED] Enviando disparo automático: {disparo}")
+
+                    respuesta = recibir_mensaje(canal_juego)
+                    
+                    if respuesta is None:
+                        print("El rival se ha desconectado.")
+                        partida_activa = False
+                        break
+
+                    print(f"[RED] Resultado: {respuesta}")
+
+                    mi_tablero.registrar_resultado(respuesta)
+
+                    # LOGICA DE VICTORIA (Me dicen que gané)
+                    if "VICTORIA" in respuesta:
+                        print("\n" + "*"*40)
+                        print("¡VICTORIA! HAS HUNDIDO LA FLOTA RIVAL.")
+                        print("*"*40)
+                        partida_activa = False
+                    
+                    elif "TOCADO" in respuesta or "HUNDIDO" in respuesta:
+                        es_mi_turno = True
+                    else:
+                        es_mi_turno = False
+
+                except Exception as e:
+                    print(f"Error de conexión: {e}")
+                    partida_activa = False
+
+            else:
+                print(f"\n--- TURNO DE {nombre_rival} ---")
+                print("Esperando disparo...")
+                
+                try:
+                    disparo_recibido = recibir_mensaje(canal_juego)
+                    
+                    if disparo_recibido is None:
+                        print("El rival se ha desconectado.")
+                        partida_activa = False
+                        break
+
+                    print(f"[RED] Rival dispara a: {disparo_recibido}")
+
+                    letra_r = disparo_recibido[0].lower()
+                    fila_r = int(disparo_recibido[1:])
+                    
+                    resultado_impacto = mi_tablero.recibir_ataque(letra_r, fila_r)
+                    print(f"Impacto en mi tablero: {resultado_impacto}")
+                    
+                    # LOGICA DE DERROTA (He perdido todos mis barcos)
+                    if not mi_tablero.quedan_barcos_vivos():
+                        resultado_impacto = "VICTORIA" # Le digo al otro que ganó
+                        canal_juego.sendall(resultado_impacto.encode()) # Se lo envío
+                        
+                        print("\n" + "!"*40)
+                        print("¡DERROTA! HAN HUNDIDO TU FLOTA.")
+                        print("!"*40)
+                        
+                        # Pausa vital para asegurar que el mensaje llega
+                        time.sleep(3) 
+                        partida_activa = False
+                    
+                    else:
+                        canal_juego.sendall(resultado_impacto.encode())
+
+                        if "TOCADO" in resultado_impacto or "HUNDIDO" in resultado_impacto:
+                            es_mi_turno = False
+                        else:
+                            es_mi_turno = True
+
+                except Exception as e:
+                    print(f"Error de conexión: {e}")
+                    partida_activa = False
+
+        print("Cerrando conexión...")
+        try:
+            canal_juego.close()
+        except:
+            pass
