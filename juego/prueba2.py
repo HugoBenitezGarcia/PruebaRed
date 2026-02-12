@@ -92,9 +92,13 @@ def abrir_servidor():
 
 def conectar_cliente(ip_rival):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.connect((ip_rival, PUERTO))
-    print("[CLIENTE] Conectado al host")
-    return s
+    while True:
+        try:
+            s.connect((ip_rival, PUERTO))
+            print("[CLIENTE] Conectado al host")
+            return s
+        except:
+            time.sleep(1)
 
 
 def recibir_mensaje(sock):
@@ -167,12 +171,10 @@ if __name__ == "__main__":
                         print("\nVICTORIA. LA IA HA GANADO.")
                         partida_activa = False
                     
-                    # LOGICA DE REPETIR TURNO
+                    # LOGICA DE REPETIR TURNO (Si acierto, sigo yo)
                     elif "TOCADO" in respuesta or "HUNDIDO" in respuesta:
-                        print("¡IMPACTO! Repites turno.")
                         es_mi_turno = True
                     else:
-                        print("AGUA. Fin de tu turno.")
                         es_mi_turno = False
 
                 except Exception as e:
@@ -205,13 +207,11 @@ if __name__ == "__main__":
                         partida_activa = False
                     
                     canal_juego.sendall(resultado_impacto.encode())
-                    
-                    # LOGICA DE REPETIR TURNO (RIVAL)
+
+                    # LOGICA DE REPETIR TURNO (Si me da, sigue él)
                     if "TOCADO" in resultado_impacto or "HUNDIDO" in resultado_impacto:
-                        print("El rival ha acertado. Repite turno.")
                         es_mi_turno = False
                     else:
-                        print("El rival ha fallado. Te toca.")
                         es_mi_turno = True
 
                 except Exception as e:
@@ -219,4 +219,8 @@ if __name__ == "__main__":
                     partida_activa = False
 
         print("Cerrando conexión...")
-        canal_juego.close()
+        time.sleep(2) # Pausa de seguridad para enviar mensaje final
+        try:
+            canal_juego.close()
+        except:
+            pass
