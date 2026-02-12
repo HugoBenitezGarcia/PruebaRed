@@ -6,7 +6,7 @@ from hundirFlota import *
 
 PUERTO = 4000
 ID = str(uuid.uuid4())
-NOMBRE = "Jugador_Python"
+NOMBRE = "Jugador_Python_Auto"
 
 
 def obtener_ip():
@@ -19,7 +19,7 @@ def obtener_ip():
 
 
 def calcular_broadcast():
-    return str(ipaddress.IPv4Network(obtener_ip() + "/21", strict=False).broadcast_address)
+    return str(ipaddress.IPv4Network(obtener_ip() + "/24", strict=False).broadcast_address)
 
 
 def buscar_partida():
@@ -36,7 +36,8 @@ def buscar_partida():
     soy_host = False
     oponente = None
 
-    print(" Buscando partida...")
+    print(f"[INFO] Mi IP: {mi_ip}")
+    print("[BUSCANDO] Buscando partida...")
 
     while estado == "ESPERANDO":
         mensaje = f"DESCUBRIR;{ID};{NOMBRE}"
@@ -60,10 +61,10 @@ def buscar_partida():
                     soy_host = True
                     estado = "JUGANDO"
                 else:
-                    print(" Esperando respuesta...")
+                    print("[INFO] Esperando respuesta...")
 
             elif modo == "ACEPTADO":
-                print(f"Partida encontrada contra: {nombre_oponente}")
+                print(f"[ACEPTADO] {nombre_oponente} me ha aceptado")
 
                 oponente = (ip_oponente, nombre_oponente)
                 soy_host = False
@@ -83,27 +84,32 @@ def abrir_servidor():
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.bind((obtener_ip(), PUERTO))
     s.listen(1)
-    print("Abriendo servidor")
+    print("[HOST] Esperando conexión TCP...")
     conn, addr = s.accept()
-    print("Conectado con", addr)
+    print("[HOST] Conectado con", addr)
     return conn
 
 
 def conectar_cliente(ip_rival):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.connect((ip_rival, PUERTO))
-    print(f"Jugador cliente {nombre_rival} Conectado al host")
-    return s
-
-
-def recibir_mensajes(sock):
     while True:
         try:
-            mensaje = sock.recv(1024).decode()
-            if mensaje:
-                print(f"[RIVAL]: {mensaje}")
+            s.connect((ip_rival, PUERTO))
+            print("[CLIENTE] Conectado al host")
+            return s
         except:
-            break
+            time.sleep(1)
+
+
+def recibir_mensaje(sock):
+    try:
+        datos = sock.recv(1024)
+        if not datos:
+            return None
+        return datos.decode().strip()
+    except:
+        return None
+
 
 if __name__ == "__main__":
     resultado = buscar_partida()
@@ -112,91 +118,114 @@ if __name__ == "__main__":
         ip_rival, soy_host, nombre_rival = resultado
         print(f"\nPARTIDA ENCONTRADA contra {nombre_rival}")
 
+        canal_juego = None
+        es_mi_turno = False
+
         if soy_host:
             print("[ROL] HOST")
-            conn = abrir_servidor()
-
-            tablero_jugador1 = Tablero()
-            flota1 = [Barco(5, "Portaaviones"), Barco(4, "Acorazado"), Barco(3, "Crucero"), Barco(3, "Submarino"), Barco(2, "Destructor")]
-            for barco in flota1:
-                tablero_jugador1.agregar_barco(barco)
-
-            casillas_pendientes = [(f, c) for f in range(8) for c in range(8)]
-            random.shuffle(casillas_pendientes)
-
-            turno = "MI_TURNO"
-            jugando = True
-
-            while jugando:
-                if turno == "MI_TURNO":
-                    fila, columna = casillas_pendientes.pop()
-                    disparo = f"{fila},{columna}"
-                    conn.sendall(disparo.encode())
-
-                    respuesta = conn.recv(1024).decode().strip()
-                    print(f"[RESULTADO]: {respuesta}")
-
-                    if respuesta == "Derrota":
-                        print("[FIN] ¡Has ganado!")
-                        jugando = False
-                    else:
-                        turno = "TURNO_RIVAL"
-
-                else:
-                    disparo_recibido = conn.recv(1024).decode().strip()
-                    f_r, c_r = map(int, disparo_recibido.split(","))
-                    resultado = tablero_jugador1.recibir_ataque(f_r, c_r)
-
-                    barcos_vivos = sum(1 for b in tablero_jugador1.barcos if b.vidas > 0)
-                    if barcos_vivos == 0:
-                        conn.sendall("Derrota".encode())
-                        print("[FIN] Has perdido.")
-                        jugando = False
-                    else:
-                        conn.sendall(resultado.encode())
-                        turno = "MI_TURNO"
-
+            canal_juego = abrir_servidor()
+            es_mi_turno = True
         else:
             print("[ROL] CLIENTE")
             time.sleep(1)
-            s = conectar_cliente(ip_rival)
+            canal_juego = conectar_cliente(ip_rival)
+            es_mi_turno = False
 
-            tablero_jugador2 = Tablero()
-            flota2 = [Barco(5, "Portaaviones"), Barco(4, "Acorazado"), Barco(3, "Crucero"), Barco(3, "Submarino"), Barco(2, "Destructor")]
-            for barco in flota2:
-                tablero_jugador2.agregar_barco(barco)
+        mi_tablero = Tablero(8)
+        flota = [
+            Barco(5, "Portaaviones"), Barco(4, "Acorazado"),
+            Barco(3, "Crucero"), Barco(3, "Submarino"), Barco(2, "Destructor")
+        ]
+        for b in flota:
+            mi_tablero.agregar_barco(b)
+        
+        partida_activa = True
 
-            casillas_pendientes = [(f, c) for f in range(8) for c in range(8)]
-            random.shuffle(casillas_pendientes)
+        while partida_activa:
+            time.sleep(2)
+            
+            # --- IMPRIMIR TABLERO ---
+            print("\n" + "="*20)
+            print("ESTADO DE TU FLOTA:")
+            mi_tablero.imprimir(ocultar_barcos=False)
+            print("="*20 + "\n")
+            # ------------------------
 
-            turno = "TURNO_RIVAL"
-            jugando = True
+            if es_mi_turno:
+                print(f"\n--- TU TURNO DE ATACAR A {nombre_rival} ---")
+                
+                coord_ia = mi_tablero.atacar()
+                letra = coord_ia[0].upper()
+                fila = coord_ia[1]
+                disparo = f"{letra}{fila}"
 
-            while jugando:
-                if turno == "TURNO_RIVAL":
-                    disparo_recibido = s.recv(1024).decode().strip()
-                    f_r, c_r = map(int, disparo_recibido.split(","))
-                    resultado = tablero_jugador2.recibir_ataque(f_r, c_r)
+                try:
+                    canal_juego.sendall(disparo.encode())
+                    print(f"[RED] Enviando disparo automático: {disparo}")
 
-                    barcos_vivos = sum(1 for b in tablero_jugador2.barcos if b.vidas > 0)
-                    if barcos_vivos == 0:
-                        s.sendall("Derrota".encode())
-                        print("[FIN] Has perdido.")
-                        jugando = False
+                    respuesta = recibir_mensaje(canal_juego)
+                    
+                    if respuesta is None:
+                        print("El rival se ha desconectado.")
+                        partida_activa = False
+                        break
+
+                    print(f"[RED] Resultado: {respuesta}")
+
+                    mi_tablero.registrar_resultado(respuesta)
+
+                    if "VICTORIA" in respuesta:
+                        print("\nVICTORIA. LA IA HA GANADO.")
+                        partida_activa = False
+                    
+                    elif "TOCADO" in respuesta or "HUNDIDO" in respuesta:
+                        es_mi_turno = True
                     else:
-                        s.sendall(resultado.encode())
-                        turno = "MI_TURNO"
+                        es_mi_turno = False
 
-                else:
-                    fila, columna = casillas_pendientes.pop()
-                    disparo = f"{fila},{columna}"
-                    s.sendall(disparo.encode())
+                except Exception as e:
+                    print(f"Error de conexión: {e}")
+                    partida_activa = False
 
-                    respuesta = s.recv(1024).decode().strip()
-                    print(f"[RESULTADO]: {respuesta}")
+            else:
+                print(f"\n--- TURNO DE {nombre_rival} ---")
+                print("Esperando disparo...")
+                
+                try:
+                    disparo_recibido = recibir_mensaje(canal_juego)
+                    
+                    if disparo_recibido is None:
+                        print("El rival se ha desconectado.")
+                        partida_activa = False
+                        break
 
-                    if respuesta == "Derrota":
-                        print("[FIN] ¡Has ganado!")
-                        jugando = False
+                    print(f"[RED] Rival dispara a: {disparo_recibido}")
+
+                    letra_r = disparo_recibido[0].lower()
+                    fila_r = int(disparo_recibido[1:])
+                    
+                    resultado_impacto = mi_tablero.recibir_ataque(letra_r, fila_r)
+                    print(f"Impacto en mi tablero: {resultado_impacto}")
+                    
+                    if not mi_tablero.quedan_barcos_vivos():
+                        resultado_impacto = "VICTORIA"
+                        print("\nDERROTA. LA IA RIVAL TE HA GANADO.")
+                        partida_activa = False
+                    
+                    canal_juego.sendall(resultado_impacto.encode())
+
+                    if "TOCADO" in resultado_impacto or "HUNDIDO" in resultado_impacto:
+                        es_mi_turno = False
                     else:
-                        turno = "TURNO_RIVAL"
+                        es_mi_turno = True
+
+                except Exception as e:
+                    print(f"Error de conexión: {e}")
+                    partida_activa = False
+
+        print("Cerrando conexión...")
+        time.sleep(2)
+        try:
+            canal_juego.close()
+        except:
+            pass
