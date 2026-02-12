@@ -2,7 +2,7 @@ import ipaddress
 import socket
 import time
 import uuid
-from hundirFlota import *
+from hundirFlota import Tablero, Barco
 
 PUERTO = 4000
 ID = str(uuid.uuid4())
@@ -107,6 +107,21 @@ def recibir_mensaje(sock):
         return None
 
 
+def validar_formato_coord(coord):
+    if len(coord) < 2:
+        return False
+    letra = coord[0].lower()
+    if letra not in "abcdefgh":
+        return False
+    try:
+        fila = int(coord[1:])
+        if fila < 0 or fila > 7:
+            return False
+    except ValueError:
+        return False
+    return True
+
+
 if __name__ == "__main__":
     resultado = buscar_partida()
 
@@ -127,25 +142,35 @@ if __name__ == "__main__":
             canal_juego = conectar_cliente(ip_rival)
             es_mi_turno = False
 
-        mi_tablero = inicializar_tablero()
-        colocar_barcos(mi_tablero)
-        tablero_tracking = inicializar_tablero_vacio()
+        mi_tablero = Tablero(8)
+        flota = [
+            Barco(5, "Portaaviones"), Barco(4, "Acorazado"),
+            Barco(3, "Crucero"), Barco(3, "Submarino"), Barco(2, "Destructor")
+        ]
+        for b in flota:
+            mi_tablero.agregar_barco(b)
+
+        tablero_rival_vista = Tablero(8)
         
         disparos_realizados = []
         partida_activa = True
 
         while partida_activa:
             if es_mi_turno:
-                print(f"TU TURNO DE ATACAR A {nombre_rival}")
+                print(f"\n--- TU TURNO DE ATACAR A {nombre_rival} ---")
+                print("TU TABLERO:")
+                mi_tablero.imprimir(ocultar_barcos=False)
+                print("TABLERO RIVAL (Tus disparos):")
+                tablero_rival_vista.imprimir(ocultar_barcos=True)
                 
                 coordenada_valida = False
                 disparo = ""
 
                 while not coordenada_valida:
-                    disparo = input("Introduce coordenada de disparo: ").upper()
+                    disparo = input("Introduce coordenada (ej: A5): ").strip().upper()
                     
-                    if not validar_coordenada(disparo):
-                        print("Formato incorrecto.")
+                    if not validar_formato_coord(disparo):
+                        print("Formato incorrecto. Usa LetraNumero (A-H, 0-7).")
                     elif disparo in disparos_realizados:
                         print(f"Ya disparaste a {disparo} antes.")
                     else:
@@ -156,13 +181,27 @@ if __name__ == "__main__":
                     canal_juego.sendall(disparo.encode())
                     print(f"[RED] Enviando disparo: {disparo}")
 
-                    respuesta = canal_juego.recv(1024).decode().strip()
-                    print(f"[RED] Resultado recibido: {respuesta}")
+                    respuesta = recibir_mensaje(canal_juego)
+                    
+                    if respuesta is None:
+                        print("El rival se ha desconectado.")
+                        partida_activa = False
+                        break
 
-                    actualizar_tablero_tracking(tablero_tracking, disparo, respuesta)
+                    print(f"[RED] Resultado: {respuesta}")
+
+                    letra = disparo[0].lower()
+                    fila = int(disparo[1:])
+                    idx_col = ord(letra) - 97
+                    
+                    marca = "o"
+                    if "TOCADO" in respuesta or "HUNDIDO" in respuesta or "VICTORIA" in respuesta:
+                        marca = "X"
+                    
+                    tablero_rival_vista.cuadricula[fila][idx_col] = marca
 
                     if "VICTORIA" in respuesta:
-                        print("HAS HUNDIDO TODA LA FLOTA. HAS GANADO.")
+                        print("\nVICTORIA. HAS HUNDIDO TODA LA FLOTA.")
                         partida_activa = False
                     
                     es_mi_turno = False
@@ -172,24 +211,27 @@ if __name__ == "__main__":
                     partida_activa = False
 
             else:
-                print(f"TURNO DE {nombre_rival}")
-                print("Esperando disparo del rival...")
+                print(f"\n--- TURNO DE {nombre_rival} ---")
+                print("Esperando disparo...")
                 
                 try:
-                    disparo_recibido = canal_juego.recv(1024).decode().strip()
+                    disparo_recibido = recibir_mensaje(canal_juego)
                     
-                    if not disparo_recibido:
+                    if disparo_recibido is None:
                         print("El rival se ha desconectado.")
                         partida_activa = False
                         break
 
                     print(f"[RED] Rival dispara a: {disparo_recibido}")
 
-                    resultado_impacto = comprobar_impacto(mi_tablero, disparo_recibido)
+                    letra_r = disparo_recibido[0].lower()
+                    fila_r = int(disparo_recibido[1:])
                     
-                    if quedan_barcos_vivos(mi_tablero) == False:
+                    resultado_impacto = mi_tablero.recibir_ataque(letra_r, fila_r)
+                    
+                    if not mi_tablero.quedan_barcos_vivos():
                         resultado_impacto = "VICTORIA"
-                        print("HAN HUNDIDO TU FLOTA. HAS PERDIDO.")
+                        print("\nDERROTA. HAN HUNDIDO TU FLOTA.")
                         partida_activa = False
                     
                     canal_juego.sendall(resultado_impacto.encode())
