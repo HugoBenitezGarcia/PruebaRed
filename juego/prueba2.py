@@ -2,11 +2,11 @@ import ipaddress
 import socket
 import time
 import uuid
-from hundirFlota import Tablero, Barco
+from hundirFlota import *
 
 PUERTO = 4000
 ID = str(uuid.uuid4())
-NOMBRE = "Jugador_Python"
+NOMBRE = "Jugador_Python_Auto"
 
 
 def obtener_ip():
@@ -107,21 +107,6 @@ def recibir_mensaje(sock):
         return None
 
 
-def validar_formato_coord(coord):
-    if len(coord) < 2:
-        return False
-    letra = coord[0].lower()
-    if letra not in "abcdefgh":
-        return False
-    try:
-        fila = int(coord[1:])
-        if fila < 0 or fila > 7:
-            return False
-    except ValueError:
-        return False
-    return True
-
-
 if __name__ == "__main__":
     resultado = buscar_partida()
 
@@ -149,37 +134,25 @@ if __name__ == "__main__":
         ]
         for b in flota:
             mi_tablero.agregar_barco(b)
-
-        tablero_rival_vista = Tablero(8)
         
-        disparos_realizados = []
         partida_activa = True
 
         while partida_activa:
+            # Pausa para ver la jugada
+            time.sleep(2)
+
             if es_mi_turno:
                 print(f"\n--- TU TURNO DE ATACAR A {nombre_rival} ---")
-                print("TU TABLERO:")
-                mi_tablero.imprimir(ocultar_barcos=False)
-                print("TABLERO RIVAL (Tus disparos):")
-                tablero_rival_vista.imprimir(ocultar_barcos=True)
                 
-                coordenada_valida = False
-                disparo = ""
-
-                while not coordenada_valida:
-                    disparo = input("Introduce coordenada (ej: A5): ").strip().upper()
-                    
-                    if not validar_formato_coord(disparo):
-                        print("Formato incorrecto. Usa LetraNumero (A-H, 0-7).")
-                    elif disparo in disparos_realizados:
-                        print(f"Ya disparaste a {disparo} antes.")
-                    else:
-                        coordenada_valida = True
-                        disparos_realizados.append(disparo)
+                # IA Genera coordenadas
+                coord_ia = mi_tablero.atacar()
+                letra = coord_ia[0].upper()
+                fila = coord_ia[1]
+                disparo = f"{letra}{fila}"
 
                 try:
                     canal_juego.sendall(disparo.encode())
-                    print(f"[RED] Enviando disparo: {disparo}")
+                    print(f"[RED] Enviando disparo automático: {disparo}")
 
                     respuesta = recibir_mensaje(canal_juego)
                     
@@ -190,18 +163,11 @@ if __name__ == "__main__":
 
                     print(f"[RED] Resultado: {respuesta}")
 
-                    letra = disparo[0].lower()
-                    fila = int(disparo[1:])
-                    idx_col = ord(letra) - 97
-                    
-                    marca = "o"
-                    if "TOCADO" in respuesta or "HUNDIDO" in respuesta or "VICTORIA" in respuesta:
-                        marca = "X"
-                    
-                    tablero_rival_vista.cuadricula[fila][idx_col] = marca
+                    # IMPORTANTE: Informar a la IA del resultado
+                    mi_tablero.registrar_resultado(respuesta)
 
                     if "VICTORIA" in respuesta:
-                        print("\nVICTORIA. HAS HUNDIDO TODA LA FLOTA.")
+                        print("\nVICTORIA. LA IA HA GANADO.")
                         partida_activa = False
                     
                     es_mi_turno = False
@@ -228,10 +194,11 @@ if __name__ == "__main__":
                     fila_r = int(disparo_recibido[1:])
                     
                     resultado_impacto = mi_tablero.recibir_ataque(letra_r, fila_r)
+                    print(f"Impacto en mi tablero: {resultado_impacto}")
                     
                     if not mi_tablero.quedan_barcos_vivos():
                         resultado_impacto = "VICTORIA"
-                        print("\nDERROTA. HAN HUNDIDO TU FLOTA.")
+                        print("\nDERROTA. LA IA RIVAL TE HA GANADO.")
                         partida_activa = False
                     
                     canal_juego.sendall(resultado_impacto.encode())
