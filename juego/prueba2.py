@@ -138,13 +138,11 @@ if __name__ == "__main__":
         partida_activa = True
 
         while partida_activa:
-            # Pausa para ver la jugada
             time.sleep(2)
 
             if es_mi_turno:
                 print(f"\n--- TU TURNO DE ATACAR A {nombre_rival} ---")
                 
-                # IA Genera coordenadas
                 coord_ia = mi_tablero.atacar()
                 letra = coord_ia[0].upper()
                 fila = coord_ia[1]
@@ -163,14 +161,19 @@ if __name__ == "__main__":
 
                     print(f"[RED] Resultado: {respuesta}")
 
-                    # IMPORTANTE: Informar a la IA del resultado
                     mi_tablero.registrar_resultado(respuesta)
 
                     if "VICTORIA" in respuesta:
                         print("\nVICTORIA. LA IA HA GANADO.")
                         partida_activa = False
                     
-                    es_mi_turno = False
+                    # LOGICA DE REPETIR TURNO
+                    elif "TOCADO" in respuesta or "HUNDIDO" in respuesta:
+                        print("¡IMPACTO! Repites turno.")
+                        es_mi_turno = True
+                    else:
+                        print("AGUA. Fin de tu turno.")
+                        es_mi_turno = False
 
                 except Exception as e:
                     print(f"Error de conexión: {e}")
@@ -202,7 +205,14 @@ if __name__ == "__main__":
                         partida_activa = False
                     
                     canal_juego.sendall(resultado_impacto.encode())
-                    es_mi_turno = True
+                    
+                    # LOGICA DE REPETIR TURNO (RIVAL)
+                    if "TOCADO" in resultado_impacto or "HUNDIDO" in resultado_impacto:
+                        print("El rival ha acertado. Repite turno.")
+                        es_mi_turno = False
+                    else:
+                        print("El rival ha fallado. Te toca.")
+                        es_mi_turno = True
 
                 except Exception as e:
                     print(f"Error de conexión: {e}")
